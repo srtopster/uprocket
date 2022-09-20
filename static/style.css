@@ -1,0 +1,14 @@
+body {
+    background-color: black;
+    color: red;
+}
+img{
+    max-width: 75%;
+}
+video {
+    max-width: 75%;
+}
+a {
+    color: red;
+    font-size: 20px;
+}
