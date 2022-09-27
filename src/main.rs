@@ -9,6 +9,7 @@ use rocket::data::{Data,ToByteUnit};
 use rocket::response::Redirect;
 use rocket_seek_stream::SeekStream;
 use std::path::{Path,PathBuf};
+use std::net::{IpAddr,Ipv4Addr};
 use std::fs::{File,read_dir};
 use std::ffi::OsStr;
 use std::env;
@@ -129,6 +130,7 @@ fn rocket() -> _  {
     tera.add_raw_template("index", &include_str!("../templates/index.html.tera")).unwrap();
     tera.add_raw_template("upload", &include_str!("../templates/upload.html.tera")).unwrap();
     let mut config = Config::release_default();
+    config.address = IpAddr::V4(Ipv4Addr::new(0,0,0,0));
     config.port = 80;
     println!("[+]Iniciando\n[>]Servindo em http://127.0.0.1:80");
 
