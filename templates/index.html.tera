@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" type="image/png" href="static/favicon.png">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <title>Dump</title>
 </head>
 <body>
@@ -14,19 +14,24 @@
          <input type="file" name="file" />
          <input type="submit"/>
     </form>
-    {% for result in results %}
-        {% if result.1 == "mp4" or result.1 == "webm" or result.1 == "mov" %}
+    {% if data | length == 0 %}
+        <a>Esta pasta está vazia</a><br>
+    {% endif %}
+    {% for file in data %}
+        {% if file.data_type == "video" %}
             <video controls>
-                <source src="{{result.0}}">
+                <source src="{{file.url}}">
             </video><br>
-        {% elif result.1 == "png" or result.1 == "jpg" or result.1 == "gif" or result.1 == "jpeg" %}
-            <img src="{{result.0}}"><br>
-        {% elif result.1 == "mp3" %}
+        {% elif file.data_type == "image" %}
+            <img src="{{file.url}}"><br>
+        {% elif file.data_type == "audio" %}
             <audio controls>
-                <source src="{{result.0}}">
+                <source src="{{file.url}}">
             </audio><br>
+        {% elif file.data_type == "dir" %}
+            <a href="{{file.url}}">{{file.name}}/</a><br>
         {% else %}
-            <a href="{{result.0}}">{{result.0}}</a><br>
+            <a href="{{file.url}}">{{file.name}}</a><br>
         {% endif %}
     {% endfor %}
 </body>

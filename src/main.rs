@@ -11,15 +11,18 @@ use rocket_seek_stream::SeekStream;
 use std::path::{Path,PathBuf};
 use std::net::{IpAddr,Ipv4Addr};
 use std::fs::{File,read_dir};
-use std::ffi::OsStr;
 use std::env;
 use std::io::prelude::*;
+use std::io::Cursor;
 use regex::Regex;
+use serde::Serialize;
 use tera::{Tera,Context};
 
 struct TeraTemplates {
     template: Tera
 }
+
+struct CurrentDir(PathBuf);
 
 struct RequestSauce {
     content_type: String,
@@ -29,6 +32,13 @@ struct RequestSauce {
 #[derive(Debug)]
 enum RequestSauceError {
     ShitHitTheFan,
+}
+
+#[derive(Serialize)]
+struct TemplateData {
+    name: String,
+    data_type: String,
+    url: String
 }
 
 #[rocket::async_trait]
@@ -80,23 +90,71 @@ async fn upload_handler(tera: &State<TeraTemplates>, headers: RequestSauce,file_
     };
 }
 
-#[get("/")]
-async fn home(tera: &State<TeraTemplates>) -> (ContentType, String) {
+#[get("/<request_path..>")]
+async fn home<'a>(tera: &State<TeraTemplates>,request_path: PathBuf, current_dir: &State<CurrentDir>) -> Result<SeekStream<'a>,Status> {
     println!("[+]Conexão.");
-    let mut files: Vec<(String,String)> = Vec::new();
-    for file in read_dir(env::current_dir().unwrap()).unwrap() {
-        let file_name = Path::new(file.as_ref().unwrap().file_name().to_str().unwrap()).to_owned();
-        if Path::is_file(&file_name) {
-            let file_type = Path::new(file.unwrap().file_name().as_os_str()).extension().unwrap_or_else(||OsStr::new("FUCK")).to_str().unwrap().to_owned();
-            files.push((file_name.to_str().unwrap().to_owned(),file_type))
-        }
+    let local_request_path = current_dir.0.join(&request_path);
+
+    if !local_request_path.exists() {
+        return Err(Status::NotFound)
     }
-    let mut context = Context::new();
-    context.insert("results".to_owned(),&files);
-    match tera.template.render("index", &context) {
-        Ok(template) => return (ContentType::HTML,template),
-        Err(_) => return (ContentType::HTML,"Deu merda".to_owned())
-    };
+
+    if local_request_path.is_file() {
+        match SeekStream::from_path(&local_request_path){
+            Ok(response) => return Ok(response),
+            Err(_) => return Err(Status::InternalServerError)
+        };
+    }else if local_request_path.is_dir() {
+        let mut template_data: Vec<TemplateData> = Vec::new();
+        for entry in read_dir(local_request_path).unwrap() {
+            let file_name = entry.as_ref().unwrap().file_name();
+            if file_name.to_string_lossy().starts_with(".") {
+                continue;
+            }
+            let file_url = request_path.join(&file_name).to_string_lossy().to_string().replace(r"\", "/");
+            let entry = entry.unwrap().path();
+            if entry.is_file() {
+                let file_type: String = match Path::new(&file_name.as_os_str()).extension() {
+                    Some(ext) => {
+                        let ext = ext.to_string_lossy().to_string();
+                        match ext.as_str() {
+                            "mp4"|"webm"|"mov" => "video".into(),
+                            "png"|"jpg"|"gif"|"jpeg" => "image".into(),
+                            "mp3" => "audio".into(),
+                            _ => "unknow".into()
+                        }
+                    }
+                    None => "noext".into()
+                };
+
+                template_data.push(TemplateData { 
+                    name: file_name.to_string_lossy().into(), 
+                    data_type: file_type,
+                    url: format!("/{}",file_url)
+                });
+            }else if entry.is_dir() {
+                template_data.push(TemplateData { 
+                    name: file_name.to_string_lossy().into(), 
+                    data_type: "dir".into(),
+                    url: format!("/{}",file_url)
+                });
+            }
+        }
+        let mut context = Context::new();
+        context.insert("data", &template_data);
+        match tera.template.render("index",&context) {
+            Ok(template) => {
+                let template_bytes = template.as_bytes().to_owned();
+                return Ok(SeekStream::with_opts(Cursor::new(template_bytes.to_owned()), template_bytes.len() as u64, "text/html"))
+            }
+            Err(err) => {
+                println!("{}",err);
+                return Err(Status::InternalServerError)
+            }
+        };
+    }else {
+        Err(Status::InternalServerError)
+    }
 }
 
 #[get("/static/<file..>")]
@@ -109,15 +167,6 @@ async fn return_static(file: PathBuf) -> Result<(ContentType,Vec<u8>),Status> {
     }
 }
 
-#[get("/<file..>")]
-async fn return_files<'a>(file: PathBuf) -> Result<SeekStream<'a>,Status> {
-    let path = Path::new(&env::current_dir().unwrap()).join(file);
-    match SeekStream::from_path(&path){
-        Ok(response) => Ok(response),
-        Err(_) => Err(Status::NotFound)
-    }
-}
-
 #[catch(404)]
 async fn not_found() -> Redirect {
     Redirect::to("/static/404.html")
@@ -125,18 +174,28 @@ async fn not_found() -> Redirect {
 
 #[launch]
 fn rocket() -> _  {
+    //pega porta dos args, se não tiver usa 8080;
+    let port: u16 = match env::args().nth(1) {
+        Some(arg) => arg.parse().unwrap_or(8080),
+        None => 8080
+    };
+
+    //pega current dir
+    let current_dir = env::current_dir().unwrap();
+
     //loading templates
     let mut tera = Tera::default();
     tera.add_raw_template("index", &include_str!("../templates/index.html.tera")).unwrap();
     tera.add_raw_template("upload", &include_str!("../templates/upload.html.tera")).unwrap();
     let mut config = Config::release_default();
     config.address = IpAddr::V4(Ipv4Addr::new(0,0,0,0));
-    config.port = 80;
-    println!("[+]Iniciando\n[>]Servindo em http://127.0.0.1:80");
+    config.port = port;
+    println!("[+]Iniciando\n[>]Servindo em http://127.0.0.1:{}",port);
 
     rocket::build()
-    .mount("/",routes![home,return_static,return_files,upload_handler])
+    .mount("/",routes![home,return_static,upload_handler])
     .manage(TeraTemplates{template:tera})
+    .manage(CurrentDir(current_dir))
     .register("/",catchers![not_found])
     .configure(config)
 }
