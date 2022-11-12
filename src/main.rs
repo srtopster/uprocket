@@ -160,6 +160,7 @@ async fn home<'a>(tera: &State<TeraTemplates>,request_path: PathBuf, current_dir
 #[get("/static/<file..>")]
 async fn return_static(file: PathBuf) -> Result<(ContentType,Vec<u8>),Status> {
     match file.to_str().unwrap() {
+        "script.js" => return Ok((ContentType::JavaScript,include_bytes!("../static/script.js").to_vec())),
         "style.css" => return Ok((ContentType::CSS,include_bytes!("../static/style.css").to_vec())),
         "favicon.png" => return Ok((ContentType::PNG,include_bytes!("../static/favicon.png").to_vec())),
         "404.html" => return Ok((ContentType::HTML,include_bytes!("../static/404.html").to_vec())),

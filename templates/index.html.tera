@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <title>Dump</title>
+    <title>Uprocket</title>
 </head>
 <body>
     <h1><u>uprocket</u></h1>
@@ -19,11 +19,11 @@
     {% endif %}
     {% for file in data %}
         {% if file.data_type == "video" %}
-            <video controls>
+            <video controls preload="none">
                 <source src="{{file.url}}">
             </video><br>
         {% elif file.data_type == "image" %}
-            <img src="{{file.url}}"><br>
+            <img data-src="{{file.url}}"><br>
         {% elif file.data_type == "audio" %}
             <audio controls>
                 <source src="{{file.url}}">
@@ -34,5 +34,6 @@
             <a href="{{file.url}}">{{file.name}}</a><br>
         {% endif %}
     {% endfor %}
+    <script src="/static/script.js"></script>
 </body>
 </html>
